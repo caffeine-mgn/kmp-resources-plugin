@@ -17,6 +17,15 @@ on:
     tags:
       - '[0-9]+.[0-9]+.[0-9]+*'
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Версия для публикации (по умолчанию — имя тега/ветки)'
+        required: false
+        default: ''
+      portal_only:
+        description: 'Публиковать только в Gradle Plugin Portal (повторная отправка)'
+        type: boolean
+        default: false
 
 jobs:
   publish:
@@ -30,6 +39,8 @@ jobs:
       # строка, и шаг публикации в Plugin Portal пропускается.
       GRADLE_PUBLISH_KEY: ${{ secrets.GRADLE_PUBLISH_KEY }}
       GRADLE_PUBLISH_SECRET: ${{ secrets.GRADLE_PUBLISH_SECRET }}
+      # При ручном запуске версию можно задать явно, иначе — имя тега/ветки.
+      PUBLISH_VERSION: ${{ github.event.inputs.version || github.ref_name }}
 
     steps:
       - name: Checkout
@@ -69,12 +80,13 @@ jobs:
           gpg --list-secret-keys --with-colons | grep -q '^sec' && echo "GPG key imported"
 
       - name: Publish to Maven Central
+        if: github.event.inputs.portal_only != 'true'
         env:
           GPG_KEY_ID: ${{ secrets.GPG_KEY_ID }}
           GPG_PASSWORD: ${{ secrets.GPG_PASSWORD }}
         run: |
           ./gradlew :plugin:publishToMavenCentral \
-            -Pversion=${{ github.ref_name }} \
+            -Pversion="$PUBLISH_VERSION" \
             -PsigningUseGpg=true \
             -Psigning.gnupg.keyName="$GPG_KEY_ID" \
             -Psigning.gnupg.passphrase="$GPG_PASSWORD" \
@@ -85,7 +97,7 @@ jobs:
         if: env.GRADLE_PUBLISH_KEY != ''
         run: |
           ./gradlew :plugin:publishPlugins \
-            -Pversion=${{ github.ref_name }} \
+            -Pversion="$PUBLISH_VERSION" \
             -PsigningUseGpg=true \
             -Psigning.gnupg.keyName="${{ secrets.GPG_KEY_ID }}" \
             -Psigning.gnupg.passphrase="${{ secrets.GPG_PASSWORD }}"
